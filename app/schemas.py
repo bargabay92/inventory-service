@@ -66,7 +66,13 @@ class StockOut(ORMModel):
 class StockAdjust(BaseModel):
     warehouse_code: str
     sku: Sku
-    delta: int = Field(..., ne=0)
+    delta: int
+
+    @validator("delta")
+    def not_zero(cls, v):
+        if v == 0:
+            raise ValueError("delta must not be 0")
+        return v
 
 
 class ReservationLine(BaseModel):
