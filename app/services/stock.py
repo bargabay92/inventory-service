@@ -1,6 +1,6 @@
 from typing import List
 
-from pydantic import parse_obj_as
+from pydantic import TypeAdapter
 from sqlalchemy.orm import Session
 
 from orders_common import EventType
@@ -53,7 +53,7 @@ def reserve(db: Session, req: schemas.ReservationRequest) -> schemas.Reservation
         events.publish(EventType.STOCK_RESERVED, order_ref=req.order_ref, sku=line.sku, qty=line.qty,
                        warehouse=req.warehouse_code)
         _maybe_low(row)
-    out = parse_obj_as(List[schemas.ReservationOut], created)
+    out = TypeAdapter(List[schemas.ReservationOut]).validate_python(created, from_attributes=True)
     return schemas.ReservationResult(order_ref=req.order_ref, reservations=out)
 
 

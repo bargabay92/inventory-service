@@ -1,15 +1,16 @@
-"""API schemas. Read models subclass orders_common.ORMModel (orm_mode) and are built from ORM rows."""
+"""API schemas. Read models subclass orders_common.ORMModel (from_attributes) and are built from ORM rows."""
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, conint, conlist, root_validator, validator
+from pydantic import field_validator, model_validator, ConfigDict, BaseModel, Field
 
 from orders_common import Address, Money, ORMModel, Sku
 from app.settings import settings
+from typing_extensions import Annotated
 
 
 class WarehouseIn(BaseModel):
-    code: str = Field(..., regex=r"^[A-Z]{2,4}\d{1,4}$")
+    code: str = Field(..., pattern=r"^[A-Z]{2,4}\d{1,4}$")
     name: str = Field(..., min_length=1, max_length=120)
     address: Address
 
@@ -20,22 +21,27 @@ class WarehouseOut(ORMModel):
     name: str
     address: Address
 
-    @root_validator(pre=True)
-    def address_from_columns(cls, values):
-        # ORM rows store the address as flat columns
-        if "address" not in values and values.get("city") is not None:
-            values = dict(values)
-            values["address"] = {k: values.get(k) for k in ("line1", "city", "postcode", "country")}
-        return values
+    @model_validator(mode="before")
+    @classmethod
+    def address_from_columns(cls, data):
+        # ORM rows store the address as flat columns. In v1 this got a dict-like view of the row;
+        # in v2 (from_attributes) it gets the SQLAlchemy object itself, so read attributes.
+        cols = ("line1", "city", "postcode", "country")
+        if isinstance(data, dict):
+            if "address" not in data and data.get("city") is not None:
+                data = {**data, "address": {k: data.get(k) for k in cols}}
+            return data
+        if getattr(data, "city", None) is not None and not hasattr(data, "address"):
+            return {**{f: getattr(data, f) for f in cls.model_fields if f != "address"},
+                    "address": {k: getattr(data, k) for k in cols}}
+        return data
 
 
 class ProductIn(BaseModel):
     sku: Sku
     name: str = Field(..., min_length=1, max_length=200)
     unit_price: Money
-
-    class Config:
-        schema_extra = {"example": {"sku": "ABC-1234", "name": "Widget", "unit_price": "19.99"}}
+    model_config = ConfigDict(json_schema_extra={"example": {"sku": "ABC-1234", "name": "Widget", "unit_price": "19.99"}})
 
 
 class ProductUpdate(BaseModel):
@@ -68,7 +74,8 @@ class StockAdjust(BaseModel):
     sku: Sku
     delta: int
 
-    @validator("delta")
+    @field_validator("delta")
+    @classmethod
     def not_zero(cls, v):
         if v == 0:
             raise ValueError("delta must not be 0")
@@ -77,9 +84,10 @@ class StockAdjust(BaseModel):
 
 class ReservationLine(BaseModel):
     sku: Sku
-    qty: conint(gt=0)
+    qty: Annotated[int, Field(gt=0)]
 
-    @validator("qty")
+    @field_validator("qty")
+    @classmethod
     def under_limit(cls, v):
         if v > settings.max_reservation_qty:
             raise ValueError(f"at most {settings.max_reservation_qty} per line")
@@ -89,14 +97,15 @@ class ReservationLine(BaseModel):
 class ReservationRequest(BaseModel):
     order_ref: str = Field(..., min_length=3, max_length=40)
     warehouse_code: str
-    lines: conlist(ReservationLine, min_items=1, max_items=50)
+    lines: Annotated[List[ReservationLine], Field(min_length=1, max_length=50)]
 
-    @root_validator(skip_on_failure=True)
-    def unique_skus(cls, values):
-        skus = [l.sku for l in values["lines"]]
+    # v1 root_validator(skip_on_failure=True) -> v2 "after" validator: runs once every field is valid
+    @model_validator(mode="after")
+    def unique_skus(self):
+        skus = [l.sku for l in self.lines]
         if len(skus) != len(set(skus)):
             raise ValueError("each sku may appear once")
-        return values
+        return self
 
 
 class ReservationOut(ORMModel):

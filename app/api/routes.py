@@ -23,7 +23,7 @@ def guard(fn, *args):
 
 @router.post("/warehouses", response_model=schemas.WarehouseOut, status_code=201)
 def create_warehouse(body: schemas.WarehouseIn, db: Session = Depends(get_session)):
-    return schemas.WarehouseOut.from_orm(guard(catalog.create_warehouse, db, body))
+    return schemas.WarehouseOut.model_validate(guard(catalog.create_warehouse, db, body))
 
 
 @router.get("/warehouses/{code}/stock", response_model=List[schemas.StockOut])
@@ -40,7 +40,7 @@ def create_product(body: schemas.ProductIn, db: Session = Depends(get_session)):
 def list_products(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500),
                   db: Session = Depends(get_session)):
     rows, total = catalog.list_products(db, offset, limit)
-    return Page[schemas.ProductOut](items=[schemas.ProductOut.from_orm(r) for r in rows], total=total,
+    return Page[schemas.ProductOut](items=[schemas.ProductOut.model_validate(r) for r in rows], total=total,
                                     offset=offset, limit=limit)
 
 

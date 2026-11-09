@@ -16,7 +16,7 @@ class Conflict(Exception):
 def create_warehouse(db: Session, data: schemas.WarehouseIn) -> models.Warehouse:
     if db.query(models.Warehouse).filter_by(code=data.code).first():
         raise Conflict(f"warehouse {data.code} exists")
-    row = models.Warehouse(code=data.code, name=data.name, **data.address.dict(exclude={"line2"}))
+    row = models.Warehouse(code=data.code, name=data.name, **data.address.model_dump(exclude={"line2"}))
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -33,7 +33,7 @@ def get_warehouse(db: Session, code: str) -> models.Warehouse:
 def create_product(db: Session, data: schemas.ProductIn) -> models.Product:
     if db.query(models.Product).filter_by(sku=data.sku).first():
         raise Conflict(f"product {data.sku} exists")
-    row = models.Product(**data.dict())
+    row = models.Product(**data.model_dump())
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -49,8 +49,8 @@ def get_product(db: Session, sku: str) -> models.Product:
 
 def update_product(db: Session, sku: str, data: schemas.ProductUpdate) -> models.Product:
     row = get_product(db, sku)
-    current = schemas.ProductOut.from_orm(row)
-    merged = current.copy(update=data.dict(exclude_unset=True))
+    current = schemas.ProductOut.model_validate(row)
+    merged = current.model_copy(update=data.model_dump(exclude_unset=True))
     row.name, row.unit_price = merged.name, merged.unit_price
     db.commit()
     db.refresh(row)

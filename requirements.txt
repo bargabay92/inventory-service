@@ -1,8 +1,9 @@
-fastapi==0.95.2
-pydantic[email]==1.10.27
+fastapi==0.162.2
+pydantic[email]==2.14.3
 sqlalchemy==1.4.52
 uvicorn==0.23.2
 # internal package, built from the orders-common repo and published to the internal index
-orders-common==1.4.0
+orders-common==2.0.0
 pytest==7.4.4
 httpx==0.24.1
+pydantic-settings==2.16.2
